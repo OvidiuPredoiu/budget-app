@@ -1,0 +1,336 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  password     String
+  name         String?
+  role         String   @default("user") // "user" or "admin"
+  active       Boolean  @default(true) // Pentru soft delete
+  lastLoginAt  DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  
+  categories   Category[]
+  budgets      Budget[]
+  transactions Transaction[]
+  refreshTokens RefreshToken[]
+  auditLogs    AuditLog[]
+  reports      Report[]
+  scheduledReports ScheduledReport[]
+  recurringTransactions RecurringTransaction[]
+  savingsGoals SavingsGoal[]
+  investments  Investment[]
+  subscriptions Subscription[]
+  receipts     Receipt[]
+  sessions     UserSession[]
+  integrations Integration[]
+  permissions  UserPermissions?
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  
+  @@index([userId])
+}
+
+model Category {
+  id           String   @id @default(uuid())
+  name         String
+  color        String?
+  isGlobal     Boolean  @default(false) // Template categorii globale
+  userId       String?
+  user         User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  
+  budgets      Budget[]
+  transactions Transaction[]
+  recurringTransactions RecurringTransaction[]
+  
+  @@index([userId])
+  @@index([isGlobal])
+}
+
+model Budget {
+  id         String   @id @default(uuid())
+  name       String?
+  month      String   // Format: YYYY-MM
+  amount     Float
+  categoryId String
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  
+  @@unique([userId, categoryId, month])
+  @@index([userId, month])
+}
+
+model Transaction {
+  id            String   @id @default(uuid())
+  date          DateTime
+  amount        Float
+  type          String   // income, expense, transfer
+  paymentMethod String   // card, cash
+  cardType      String?  // debit, credit, virtual
+  merchant      String?
+  note          String?
+  categoryId    String
+  category      Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  goalId        String?  // Optional: link transaction to savings goal
+  goal          SavingsGoal? @relation(fields: [goalId], references: [id], onDelete: SetNull)
+  receipts      Receipt[]
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  @@index([userId, date])
+  @@index([userId, categoryId])
+  @@index([goalId])
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action    String   // login, logout, create, update, delete
+  entity    String   // user, transaction, budget, category
+  entityId  String?
+  details   String?  // JSON string cu detalii
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+  
+  @@index([userId])
+  @@index([action])
+  @@index([entity])
+  @@index([createdAt])
+}
+
+model GlobalAlert {
+  id          String   @id @default(uuid())
+  type        String   // inactive_user, budget_exceeded, anomaly
+  severity    String   // info, warning, critical
+  title       String
+  description String
+  userId      String?  // Dacă e specific unui user
+  isRead      Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  
+  @@index([isRead])
+  @@index([createdAt])
+}
+
+// PREMIUM FEATURES
+
+model Report {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title       String
+  type        String   // monthly, yearly, custom, comparison
+  startDate   DateTime
+  endDate     DateTime
+  format      String   // pdf, excel, json
+  filters     String?  // JSON: { categoryIds, paymentMethods, types }
+  generatedAt DateTime @default(now())
+  fileUrl     String?  // Link towards generated file
+  createdAt   DateTime @default(now())
+  
+  @@index([userId])
+  @@index([createdAt])
+}
+
+model ScheduledReport {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  frequency String   // daily, weekly, monthly, yearly
+  email     String
+  type      String   // monthly, yearly, custom
+  filters   String?  // JSON
+  isActive  Boolean  @default(true)
+  nextRun   DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@index([userId])
+  @@index([nextRun])
+}
+
+model RecurringTransaction {
+  id            String   @id @default(uuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  amount        Float
+  type          String   // income, expense
+  paymentMethod String   // card, cash
+  description   String
+  categoryId    String
+  category      Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  frequency     String   // daily, weekly, biweekly, monthly, yearly
+  startDate     DateTime
+  endDate       DateTime?
+  lastRunDate   DateTime?
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  @@index([userId])
+  @@index([isActive])
+}
+
+model SavingsGoal {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name        String
+  targetAmount Float
+  currentAmount Float @default(0)
+  deadline    DateTime?
+  color       String?
+  icon        String?  // emoji or icon name
+  description String?
+  transactions Transaction[] // Transactions linked to this goal
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([userId])
+}
+
+model Investment {
+  id              String   @id @default(uuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type            String   // stock, crypto, real_estate, bond
+  symbol          String?  // AAPL, BTC, etc
+  name            String
+  quantity        Float
+  purchasePrice   Float
+  currentPrice    Float
+  currency        String   @default("USD")
+  purchaseDate    DateTime
+  lastUpdated     DateTime @default(now())
+  notes           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@index([userId])
+}
+
+model Subscription {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name        String
+  amount      Float
+  frequency   String   // monthly, yearly
+  nextBillingDate DateTime
+  status      String   // active, cancelled, paused
+  paymentMethod String?
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@index([userId])
+  @@index([nextBillingDate])
+}
+
+model Receipt {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactionId String?
+  transaction Transaction? @relation(fields: [transactionId], references: [id], onDelete: SetNull)
+  imageUrl    String
+  text        String?  // OCR extracted text
+  merchant    String?
+  amount      Float?
+  date        DateTime?
+  createdAt   DateTime @default(now())
+  
+  @@index([userId])
+  @@index([transactionId])
+}
+
+model UserSession {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ip        String
+  userAgent String
+  lastActive DateTime
+  createdAt DateTime @default(now())
+  
+  @@index([userId])
+}
+
+model Integration {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String   // bank, payment, weather, etc
+  provider  String   // stripe, wise, plaid, etc
+  token     String?  // encrypted token
+  refreshToken String?
+  isActive  Boolean  @default(true)
+  metadata  String?  // JSON
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@unique([userId, provider])
+  @@index([userId])
+}
+
+// USER PERMISSIONS
+model UserPermissions {
+  id              String   @id @default(uuid())
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Basic features (always true)
+  dashboard       Boolean  @default(true)
+  transactions    Boolean  @default(true)
+  categories      Boolean  @default(true)
+  
+  // Additional features
+  budgets         Boolean  @default(true)
+  recurring       Boolean  @default(true)
+  goals           Boolean  @default(true)
+  investments     Boolean  @default(true)
+  subscriptions   Boolean  @default(true)
+  receipts        Boolean  @default(true)
+  reports         Boolean  @default(true)
+  insights        Boolean  @default(true)
+  predictions     Boolean  @default(true)
+  banking         Boolean  @default(true)
+  sharedBudgets   Boolean  @default(true)
+  analytics       Boolean  @default(true)
+  tax             Boolean  @default(true)
+  currency        Boolean  @default(true)
+  developer       Boolean  @default(false)
+  whiteLabel      Boolean  @default(true)
+  
+  updatedAt       DateTime @updatedAt
+  
+  @@index([userId])
+}
