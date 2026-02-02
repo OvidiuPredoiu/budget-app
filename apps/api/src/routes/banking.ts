@@ -2,15 +2,15 @@ import { Router, Request, Response } from 'express';
 import { prisma } from '../lib/prisma';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { hasPermission } from '../middleware/checkPermission';
-import crypto from 'crypto';
 
 const router = Router();
 
 // Middleware pentru autentificare
 router.use(authenticate);
 
-// Mock Plaid client - in production, use actual Plaid SDK
-const generateLinkToken = () => crypto.randomBytes(16).toString('hex');
+const plaidConfigured = Boolean(
+  process.env.PLAID_CLIENT_ID && process.env.PLAID_SECRET
+);
 
 // POST /api/banking/link-token - Crea token pentru Plaid Link
 router.post('/link-token', async (req: AuthRequest, res: Response) => {
@@ -24,16 +24,11 @@ router.post('/link-token', async (req: AuthRequest, res: Response) => {
       }
     }
 
-    // In production, call Plaid API
-    const linkToken = generateLinkToken();
-    const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + 1);
+    if (!plaidConfigured) {
+      return res.status(501).json({ error: 'Plaid integration not configured' });
+    }
 
-    res.json({
-      linkToken,
-      expiresAt,
-      redirectUri: `${process.env.FRONTEND_URL}/banking/callback`
-    });
+    return res.status(501).json({ error: 'Plaid integration not implemented' });
   } catch (err: any) {
     res.status(500).json({ error: 'Failed to generate link token' });
   }
@@ -56,37 +51,11 @@ router.post('/exchange-token', async (req: AuthRequest, res: Response) => {
       return res.status(400).json({ error: 'Public token required' });
     }
 
-    // In production, call Plaid exchangePublicToken API
-    const accessToken = crypto.randomBytes(32).toString('hex');
+    if (!plaidConfigured) {
+      return res.status(501).json({ error: 'Plaid integration not configured' });
+    }
 
-    // Salvează integrarea
-    const integration = await prisma.integration.upsert({
-      where: {
-        userId_provider: {
-          userId,
-          provider: 'plaid'
-        }
-      },
-      update: {
-        token: accessToken,
-        isActive: true,
-        metadata: JSON.stringify({ linkedAt: new Date().toISOString() })
-      },
-      create: {
-        userId,
-        type: 'bank',
-        provider: 'plaid',
-        token: accessToken,
-        isActive: true,
-        metadata: JSON.stringify({ linkedAt: new Date().toISOString() })
-      }
-    });
-
-    res.json({
-      success: true,
-      message: 'Bank account linked successfully',
-      integration
-    });
+    return res.status(501).json({ error: 'Plaid integration not implemented' });
   } catch (err: any) {
     res.status(500).json({ error: 'Failed to exchange token' });
   }
@@ -112,35 +81,14 @@ router.get('/accounts', async (req: AuthRequest, res: Response) => {
       return res.json({ accounts: [] });
     }
 
-    // In production, call Plaid getAccounts API
-    // For now, return mock data
-    const accounts = [
-      {
-        id: 'checking_' + crypto.randomBytes(4).toString('hex'),
-        name: 'Checking Account',
-        type: 'depository',
-        subtype: 'checking',
-        mask: '1234',
-        balance: 5000.50,
-        currency: 'USD',
-        verified: true
-      },
-      {
-        id: 'savings_' + crypto.randomBytes(4).toString('hex'),
-        name: 'Savings Account',
-        type: 'depository',
-        subtype: 'savings',
-        mask: '5678',
-        balance: 15000.00,
-        currency: 'USD',
-        verified: false
-      }
-    ];
+    if (!plaidConfigured) {
+      return res.status(501).json({ error: 'Plaid integration not configured' });
+    }
 
     res.json({
       integration,
-      accounts,
-      linkedAt: integration.metadata ? JSON.parse(integration.metadata).linkedAt : null
+      accounts: [],
+      linkedAt: integration?.metadata ? JSON.parse(integration.metadata).linkedAt : null
     });
   } catch (err: any) {
     res.status(500).json({ error: 'Failed to fetch accounts' });
@@ -168,66 +116,11 @@ router.post('/sync-transactions', async (req: AuthRequest, res: Response) => {
       return res.status(400).json({ error: 'No Plaid account linked' });
     }
 
-    // In production, call Plaid getTransactions API
-    // For now, generate mock transactions
-    const mockTransactions = [
-      {
-        id: 'txn_' + crypto.randomBytes(4).toString('hex'),
-        date: new Date(startDate),
-        merchant: 'Amazon',
-        amount: -49.99,
-        category: ['Shopping'],
-        pending: false
-      },
-      {
-        id: 'txn_' + crypto.randomBytes(4).toString('hex'),
-        date: new Date(),
-        merchant: 'Direct Deposit - Company Inc',
-        amount: 3500.00,
-        category: ['Transfer', 'Deposit'],
-        pending: false
-      }
-    ];
-
-    // Salvează tranzacții ca transactions
-    const categories = await prisma.category.findMany({
-      where: { userId },
-      take: 1
-    });
-
-    const imported = [];
-    for (const mockTxn of mockTransactions) {
-      const existing = await prisma.transaction.findFirst({
-        where: {
-          userId,
-          merchant: mockTxn.merchant,
-          amount: mockTxn.amount,
-          date: mockTxn.date
-        }
-      });
-
-      if (!existing) {
-        const txn = await prisma.transaction.create({
-          data: {
-            userId,
-            categoryId: categories[0]?.id || '',
-            type: mockTxn.amount > 0 ? 'income' : 'expense',
-            amount: Math.abs(mockTxn.amount),
-            paymentMethod: 'card',
-            merchant: mockTxn.merchant,
-            date: mockTxn.date,
-            note: `Imported from Plaid - ${mockTxn.category.join(', ')}`
-          }
-        });
-        imported.push(txn);
-      }
+    if (!plaidConfigured) {
+      return res.status(501).json({ error: 'Plaid integration not configured' });
     }
 
-    res.json({
-      success: true,
-      imported: imported.length,
-      message: `${imported.length} transactions synced`
-    });
+    return res.status(501).json({ error: 'Plaid integration not implemented' });
   } catch (err: any) {
     res.status(500).json({ error: 'Failed to sync transactions' });
   }

@@ -1,37 +1,53 @@
-import { Router, Request, Response } from 'express';
+import { Router, Response } from 'express';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { hasPermission } from '../middleware/checkPermission';
+import { prisma } from '../lib/prisma';
 
 const router = Router();
 router.use(authenticate);
 
+const ensureAccess = async (req: AuthRequest, res: Response) => {
+  const userId = req.userId!;
+  if (req.user?.role === 'admin') return true;
+  const allowed = await hasPermission(userId, 'whiteLabel');
+  if (!allowed) {
+    res.status(403).json({ error: 'Access denied', message: 'White-label feature is not available' });
+    return false;
+  }
+  return true;
+};
+
 // POST /api/white-label/setup - Configurează white-label
 router.post('/setup', async (req: AuthRequest, res: Response) => {
   try {
+    if (!(await ensureAccess(req, res))) return;
     const userId = req.userId!;
-    // Check permission for non-admin users
-    if (req.user?.role !== 'admin') {
-      const allowed = await hasPermission(userId, 'whiteLabel');
-      if (!allowed) {
-        return res.status(403).json({ error: 'Access denied', message: 'White-label feature is not available' });
-      }
-    }
     const { companyName, logo, colors, domain, email } = req.body;
 
-    // TODO: Save to WhiteLabelConfig model
-
-    res.json({
-      success: true,
-      config: {
+    const config = await prisma.whiteLabelConfig.upsert({
+      where: { userId },
+      update: {
         companyName,
         logo,
         colors,
         domain,
         email,
-        customDomain: `${domain}.budgetapp.io`,
+        customDomain: domain ? `${domain}.budgetapp.io` : null,
+        status: 'active'
+      },
+      create: {
+        userId,
+        companyName,
+        logo,
+        colors,
+        domain,
+        email,
+        customDomain: domain ? `${domain}.budgetapp.io` : null,
         status: 'active'
       }
     });
+
+    res.json({ success: true, config });
   } catch (err: any) {
     res.status(500).json({ error: 'Failed to setup white-label' });
   }
@@ -40,27 +56,15 @@ router.post('/setup', async (req: AuthRequest, res: Response) => {
 // GET /api/white-label/config - Obține configurație
 router.get('/config', async (req: AuthRequest, res: Response) => {
   try {
+    if (!(await ensureAccess(req, res))) return;
     const userId = req.userId!;
-    // Check permission for non-admin users
-    if (req.user?.role !== 'admin') {
-      const allowed = await hasPermission(userId, 'whiteLabel');
-      if (!allowed) {
-        return res.status(403).json({ error: 'Access denied', message: 'White-label feature is not available' });
-      }
+
+    const config = await prisma.whiteLabelConfig.findUnique({ where: { userId } });
+    if (!config) {
+      return res.status(404).json({ error: 'White-label config not found' });
     }
 
-    // TODO: Fetch from WhiteLabelConfig model
-
-    res.json({
-      companyName: 'My Company',
-      logo: 'https://example.com/logo.png',
-      colors: {
-        primary: '#10b981',
-        secondary: '#06b6d4'
-      },
-      domain: 'mycompany',
-      email: 'noreply@mycompany.com'
-    });
+    res.json(config);
   } catch (err: any) {
     res.status(500).json({ error: 'Failed to fetch config' });
   }
@@ -69,22 +73,34 @@ router.get('/config', async (req: AuthRequest, res: Response) => {
 // PATCH /api/white-label/config - Update configurație
 router.patch('/config', async (req: AuthRequest, res: Response) => {
   try {
+    if (!(await ensureAccess(req, res))) return;
     const userId = req.userId!;
-    // Check permission for non-admin users
-    if (req.user?.role !== 'admin') {
-      const allowed = await hasPermission(userId, 'whiteLabel');
-      if (!allowed) {
-        return res.status(403).json({ error: 'Access denied', message: 'White-label feature is not available' });
+    const { companyName, logo, colors, domain, email, status } = req.body;
+
+    const config = await prisma.whiteLabelConfig.upsert({
+      where: { userId },
+      update: {
+        companyName,
+        logo,
+        colors,
+        domain,
+        email,
+        status: status || undefined,
+        customDomain: domain ? `${domain}.budgetapp.io` : undefined
+      },
+      create: {
+        userId,
+        companyName,
+        logo,
+        colors,
+        domain,
+        email,
+        status: status || 'active',
+        customDomain: domain ? `${domain}.budgetapp.io` : null
       }
-    }
-    const { companyName, logo, colors, domain, email } = req.body;
-
-    // TODO: Update WhiteLabelConfig model
-
-    res.json({
-      success: true,
-      message: 'Configuration updated'
     });
+
+    res.json({ success: true, config });
   } catch (err: any) {
     res.status(500).json({ error: 'Failed to update config' });
   }
@@ -93,21 +109,9 @@ router.patch('/config', async (req: AuthRequest, res: Response) => {
 // POST /api/white-label/upload-logo - Upload logo
 router.post('/upload-logo', async (req: AuthRequest, res: Response) => {
   try {
-    const userId = req.userId!;
-    // Check permission for non-admin users
-    if (req.user?.role !== 'admin') {
-      const allowed = await hasPermission(userId, 'whiteLabel');
-      if (!allowed) {
-        return res.status(403).json({ error: 'Access denied', message: 'White-label feature is not available' });
-      }
-    }
+    if (!(await ensureAccess(req, res))) return;
 
-    // TODO: Handle file upload (S3/local storage)
-
-    res.json({
-      success: true,
-      logoUrl: 'https://cdn.budgetapp.io/logos/user_' + userId + '.png'
-    });
+    return res.status(501).json({ error: 'Logo upload not implemented' });
   } catch (err: any) {
     res.status(500).json({ error: 'Failed to upload logo' });
   }

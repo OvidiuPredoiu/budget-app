@@ -36,6 +36,16 @@ model User {
   sessions     UserSession[]
   integrations Integration[]
   permissions  UserPermissions?
+  sharedBudgetsCreated SharedBudget[] @relation("SharedBudgetCreator")
+  sharedBudgetMembers SharedBudgetMember[]
+  sharedExpensesPaid SharedExpense[] @relation("SharedExpensePaidBy")
+  sharedSettlementsFrom SharedSettlement[] @relation("SharedSettlementFrom")
+  sharedSettlementsTo SharedSettlement[] @relation("SharedSettlementTo")
+  sharedSettlementsCreated SharedSettlement[] @relation("SharedSettlementCreatedBy")
+  apiKeys      ApiKey[]
+  webhooks     Webhook[]
+  webhookEvents WebhookEvent[]
+  whiteLabelConfig WhiteLabelConfig?
 }
 
 model RefreshToken {
@@ -98,6 +108,8 @@ model Transaction {
   user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   goalId        String?  // Optional: link transaction to savings goal
   goal          SavingsGoal? @relation(fields: [goalId], references: [id], onDelete: SetNull)
+  sharedBudgetId String?
+  sharedBudget  SharedBudget? @relation(fields: [sharedBudgetId], references: [id], onDelete: SetNull)
   receipts      Receipt[]
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
@@ -105,6 +117,7 @@ model Transaction {
   @@index([userId, date])
   @@index([userId, categoryId])
   @@index([goalId])
+  @@index([sharedBudgetId])
 }
 
 model AuditLog {
@@ -332,5 +345,134 @@ model UserPermissions {
   
   updatedAt       DateTime @updatedAt
   
+  @@index([userId])
+}
+
+model SharedBudget {
+  id           String   @id @default(uuid())
+  name         String
+  totalAmount  Float
+  createdById  String
+  createdBy    User     @relation("SharedBudgetCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  categoryIds  Json
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  members      SharedBudgetMember[]
+  expenses     SharedExpense[]
+  settlements  SharedSettlement[]
+  transactions Transaction[]
+
+  @@index([createdById])
+}
+
+model SharedBudgetMember {
+  id        String   @id @default(uuid())
+  budgetId  String
+  budget    SharedBudget @relation(fields: [budgetId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role      String   @default("member")
+  createdAt DateTime @default(now())
+
+  @@unique([budgetId, userId])
+  @@index([userId])
+}
+
+model SharedExpense {
+  id            String   @id @default(uuid())
+  budgetId      String
+  budget        SharedBudget @relation(fields: [budgetId], references: [id], onDelete: Cascade)
+  transactionId String
+  transaction   Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  paidByUserId  String
+  paidBy        User     @relation("SharedExpensePaidBy", fields: [paidByUserId], references: [id], onDelete: Cascade)
+  splitAmong    Json
+  amount        Float
+  createdAt     DateTime @default(now())
+
+  @@index([budgetId])
+  @@index([paidByUserId])
+}
+
+model SharedSettlement {
+  id          String   @id @default(uuid())
+  budgetId    String
+  budget      SharedBudget @relation(fields: [budgetId], references: [id], onDelete: Cascade)
+  fromUserId  String
+  toUserId    String
+  fromUser    User     @relation("SharedSettlementFrom", fields: [fromUserId], references: [id], onDelete: Cascade)
+  toUser      User     @relation("SharedSettlementTo", fields: [toUserId], references: [id], onDelete: Cascade)
+  amount      Float
+  createdById String
+  createdBy   User     @relation("SharedSettlementCreatedBy", fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+
+  @@index([budgetId])
+  @@index([fromUserId])
+  @@index([toUserId])
+}
+
+model ApiKey {
+  id         String   @id @default(uuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name       String
+  keyHash    String   @unique
+  keyPrefix  String
+  keyLast4   String
+  createdAt  DateTime @default(now())
+  lastUsedAt DateTime?
+  revokedAt  DateTime?
+
+  @@index([userId])
+}
+
+model Webhook {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  event     String
+  url       String
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  events    WebhookEvent[]
+
+  @@index([userId])
+}
+
+model WebhookEvent {
+  id             String   @id @default(uuid())
+  webhookId      String?
+  webhook        Webhook? @relation(fields: [webhookId], references: [id], onDelete: SetNull)
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  event          String
+  status         String
+  statusCode     Int?
+  responseTimeMs Int?
+  payload        Json?
+  createdAt      DateTime @default(now())
+
+  @@index([userId])
+  @@index([event])
+}
+
+model WhiteLabelConfig {
+  id          String   @id @default(uuid())
+  userId      String   @unique
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  companyName String?
+  logo        String?
+  colors      Json?
+  domain      String?
+  email       String?
+  customDomain String?
+  status      String   @default("active")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
   @@index([userId])
 }
