@@ -111,6 +111,7 @@ model Transaction {
   sharedBudgetId String?
   sharedBudget  SharedBudget? @relation(fields: [sharedBudgetId], references: [id], onDelete: SetNull)
   receipts      Receipt[]
+  sharedExpenses SharedExpense[]
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
   
