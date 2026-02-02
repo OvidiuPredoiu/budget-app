@@ -80,7 +80,7 @@ app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 // Rate limiting configuration
 const authLimiter = rateLimit({
   windowMs: process.env.NODE_ENV === 'production' ? 15 * 60 * 1000 : 60 * 60 * 1000, // 15 min in prod, 1 hour in dev
-  max: process.env.NODE_ENV === 'production' ? 20 : 100, // 20 requests in prod, 100 in dev
+  max: process.env.NODE_ENV === 'production' ? 100 : 100, // 100 requests per window
   message: 'Prea multe încercări. Încercați din nou peste 15 minute.',
   standardHeaders: true,
   legacyHeaders: false,
